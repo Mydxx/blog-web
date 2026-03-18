@@ -1,0 +1,58 @@
+---
+title: "我的开发环境配置"
+date: "2024-03-17"
+tags: ["工具", "效率", "开发环境"]
+excerpt: "分享我的日常开发环境配置，包括编辑器、终端、Git 配置等工具的详细设置，帮助你打造高效的开发环境。"
+---
+
+# 我的开发环境配置
+
+一个高效的开发环境可以大大提高工作效率。分享一下我的日常开发环境配置。
+
+## 编辑器配置
+
+我使用 VS Code，主要插件：
+
+- **GitLens** - Git 可视化
+- **ESLint** - 代码检查
+- **Prettier** - 代码格式化
+- **Tailwind CSS IntelliSense** - Tailwind 提示
+
+### VS Code settings.json
+
+```json
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.tabSize": 2,
+  "files.autoSave": "onFocusChange"
+}
+```
+
+## 终端配置
+
+使用 Windows Terminal + PowerShell，配合以下配置：
+
+```powershell
+# Aliases
+Set-Alias -Name ll -Value Get-ChildItem
+Set-Alias -Name gs -Value git status
+```
+
+## Git 配置
+
+```bash
+# 用户信息
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+
+# 默认分支名
+git config --global init.defaultBranch main
+
+# 推送方式
+git config --global push.default current
+```
+
+## 结语
+
+保持工具链的简洁和一致，比不断追逐新工具更重要。希望这些配置对你有所帮助！

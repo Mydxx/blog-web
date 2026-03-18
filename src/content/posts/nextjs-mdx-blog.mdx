@@ -1,0 +1,101 @@
+---
+title: "使用 Next.js 和 MDX 构建博客"
+date: "2024-03-19"
+tags: ["Next.js", "MDX", "教程"]
+excerpt: "本文介绍如何使用 Next.js 14 和 MDX 从零开始构建一个现代化的个人博客，包含完整的配置步骤和核心功能实现。"
+---
+
+# 使用 Next.js 和 MDX 构建博客
+
+在这篇文章中，我将分享如何使用 Next.js 14 和 MDX 从零开始构建一个现代化的个人博客。
+
+## 为什么选择 Next.js + MDX？
+
+### 1. Next.js 的优势
+
+- **App Router**: 现代化的路由系统
+- **Server Components**: 默认服务端渲染，性能更好
+- **静态站点生成 (SSG)**: 适合博客这种内容为主的站点
+- **丰富的生态**: 大量第三方库支持
+
+### 2. MDX 的优势
+
+- **Markdown + JSX**: 在 Markdown 中使用 React 组件
+- **代码高亮**: 轻松实现语法高亮
+- **内容管理**: 简单直观的文件管理
+
+## 项目结构
+
+```
+blog/
+├── app/                  # Next.js App Router
+├── components/           # React 组件
+├── content/
+│   └── posts/           # MDX 文章
+└── lib/                 # 工具函数
+```
+
+## 核心功能
+
+### 文章列表
+
+使用 `fs` 和 `gray-matter` 读取本地 MDX 文件：
+
+```typescript
+import fs from "fs";
+import matter from "gray-matter";
+
+export function getAllPosts() {
+  const posts = fs.readdirSync("content/posts");
+  return posts.map((filename) => {
+    const file = fs.readFileSync(`content/posts/${filename}`, "utf-8");
+    const { data } = matter(file);
+    return data;
+  });
+}
+```
+
+### MDX 渲染
+
+使用 `next-mdx-remote` 渲染 MDX 内容：
+
+```typescript
+import { MDXRemote } from "next-mdx-remote/rsc";
+
+export default function Post({ content }) {
+  return (
+    <MDXRemote source={content} />
+  );
+}
+```
+
+## 部署
+
+使用 GitHub Actions 实现自动化部署到 GitHub Pages：
+
+```yaml
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+```
+
+## 总结
+
+Next.js + MDX 是一个非常适合构建博客的技术组合，既保留了 Markdown 的简洁性，又能使用 React 强大的组件能力。
+
+如果你有任何问题，欢迎留言讨论！

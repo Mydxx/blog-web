@@ -1,0 +1,102 @@
+---
+title: "TypeScript 最佳实践指南"
+date: "2024-03-18"
+tags: ["TypeScript", "编程语言", "教程"]
+excerpt: "本文总结了 TypeScript 开发中的一些最佳实践，包括类型推断、泛型使用、类型守卫等核心概念的深入讲解。"
+---
+
+# TypeScript 最佳实践指南
+
+TypeScript 已经成为现代前端开发的标配。本文将分享一些 TypeScript 开发中的最佳实践。
+
+## 类型推断
+
+善用 TypeScript 的类型推断能力，避免不必要的类型标注：
+
+```typescript
+// 推荐：让 TypeScript 推断类型
+const numbers = [1, 2, 3];
+const doubled = numbers.map((n) => n * 2);
+
+// 不推荐：过度标注
+const numbers: number[] = [1, 2, 3];
+const doubled: number[] = numbers.map((n: number): number => n * 2);
+```
+
+## 泛型
+
+使用泛型提高代码的可复用性：
+
+```typescript
+// 通用 API 响应类型
+interface ApiResponse<T> {
+  data: T;
+  status: number;
+  message: string;
+}
+
+// 使用泛型
+interface User {
+  id: number;
+  name: string;
+}
+
+const response: ApiResponse<User> = {
+  data: { id: 1, name: "张三" },
+  status: 200,
+  message: "Success",
+};
+```
+
+## 类型守卫
+
+使用类型守卫确保类型安全：
+
+```typescript
+interface Cat {
+  meow(): void;
+}
+
+interface Dog {
+  bark(): void;
+}
+
+function isCat(animal: Cat | Dog): animal is Cat {
+  return (animal as Cat).meow !== undefined;
+}
+
+function makeSound(animal: Cat | Dog) {
+  if (isCat(animal)) {
+    animal.meow();
+  } else {
+    animal.bark();
+  }
+}
+```
+
+## 常用工具类型
+
+TypeScript 内置了许多实用的工具类型：
+
+- `Partial<T>` - 将所有属性变为可选
+- `Required<T>` - 将所有属性变为必需
+- `Pick<T, K>` - 从 T 中选择部分属性
+- `Omit<T, K>` - 从 T 中排除部分属性
+
+```typescript
+interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+
+// 创建部分更新的类型
+type UpdateUser = Partial<User>;
+
+// 创建用户名的只读类型
+type ReadonlyName = Readonly<Pick<User, "name">>;
+```
+
+## 总结
+
+掌握这些 TypeScript 最佳实践，能让你的代码更加健壮和可维护。
