@@ -14,9 +14,37 @@ interface Post {
   readingTime: string;
 }
 
+// 静态文章列表 - 手动同步更新
+const STATIC_POSTS: Post[] = [
+  {
+    slug: "nextjs-mdx-blog",
+    title: "使用 Next.js 和 MDX 构建博客",
+    date: "2024-03-19",
+    tags: ["Next.js", "MDX", "教程"],
+    excerpt: "本文介绍如何使用 Next.js 14 和 MDX 从零开始构建一个现代化的个人博客...",
+    readingTime: "5 min read"
+  },
+  {
+    slug: "typescript-best-practices",
+    title: "TypeScript 最佳实践指南",
+    date: "2024-03-18",
+    tags: ["TypeScript", "编程语言", "教程"],
+    excerpt: "本文总结了 TypeScript 开发中的一些最佳实践...",
+    readingTime: "4 min read"
+  },
+  {
+    slug: "dev-environment",
+    title: "我的开发环境配置",
+    date: "2024-03-17",
+    tags: ["工具", "效率", "开发环境"],
+    excerpt: "分享我的日常开发环境配置...",
+    readingTime: "3 min read"
+  }
+];
+
 export default function AdminListPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts] = useState<Post[]>(STATIC_POSTS);
   const router = useRouter();
 
   useEffect(() => {
@@ -25,11 +53,6 @@ export default function AdminListPage() {
       router.push("/admin");
     } else {
       setIsLoggedIn(true);
-      // 从 API 获取文章列表
-      fetch("/api/posts")
-        .then((res) => res.json())
-        .then((data) => setPosts(data))
-        .catch(() => setPosts([]));
     }
   }, [router]);
 
@@ -60,6 +83,13 @@ export default function AdminListPage() {
             退出登录
           </button>
         </div>
+      </div>
+
+      <div className="bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded-lg p-4 mb-6">
+        <p className="text-sm text-yellow-800 dark:text-yellow-200">
+          <strong>提示：</strong> 这是一个静态博客。文章文件位于 <code className="bg-yellow-200 dark:bg-yellow-800 px-1 rounded">src/content/posts/</code> 目录。
+          要管理文章，请在本地编辑 MDX 文件然后推送到 GitHub。
+        </p>
       </div>
 
       <div className="space-y-4">
@@ -98,11 +128,6 @@ export default function AdminListPage() {
             </div>
           </div>
         ))}
-        {posts.length === 0 && (
-          <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-            暂无文章，请先在本地创建 MDX 文件
-          </p>
-        )}
       </div>
     </div>
   );
