@@ -35,10 +35,15 @@ jobs:
         env:
           BUILD_TIMEOUT: 300
 
+      - name: Copy output to docs
+        run: |
+          cp -r out/. docs/
+          echo "Copied build output to docs/"
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .next
+          path: docs
 
   deploy:
     environment:
