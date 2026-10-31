@@ -19,10 +19,29 @@ export interface Post extends PostMetadata {
 }
 
 function calculateReadingTime(content: string): string {
-  const wordsPerMinute = 200;
-  const words = content.trim().split(/\s+/).length;
-  const minutes = Math.ceil(words / wordsPerMinute);
-  return `${minutes} min read`;
+  // 中文按字符数（400 字/分钟），其余按词数（200 词/分钟）估算
+  const cjkChars = content.match(/[\u3400-\u9fff\uf900-\ufaff]/g)?.length ?? 0;
+  const words = content
+    .replace(/[\u3400-\u9fff\uf900-\ufaff]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  const minutes = Math.ceil(cjkChars / 400 + words / 200);
+  return `${Math.max(1, minutes)} min read`;
+}
+
+/** 按日期排序后，返回某篇文章的前一篇（更新）与后一篇（更早） */
+export function getAdjacentPosts(slug: string): {
+  newer: PostMetadata | null;
+  older: PostMetadata | null;
+} {
+  const posts = getAllPosts();
+  const index = posts.findIndex((p) => p.slug === slug);
+  if (index === -1) return { newer: null, older: null };
+  return {
+    newer: index > 0 ? posts[index - 1] : null,
+    older: index < posts.length - 1 ? posts[index + 1] : null,
+  };
 }
 
 export function getPostSlugs(): string[] {

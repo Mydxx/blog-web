@@ -1,0 +1,91 @@
+---
+title: "Java 代码审计入门：反序列化与利用链挖掘思路"
+date: "2026-10-28"
+tags: ["Java", "代码审计", "漏洞分析"]
+excerpt: "反序列化漏洞为什么是 Java 审计的第一课？从序列化机制讲到 URLDNS 探测链与 CommonsCollections gadget 的构造思路，再到审计切入点与防御建议。"
+---
+
+Java 反序列化几乎是 Java 代码审计的第一课：它出现的年头久、影响面广、又最能体现"gadget chain"这一 Java 漏洞利用的核心思想。这篇按"机制 → 探测 → 利用链思路 → 审计方法 → 防御"的顺序梳理学习路径，配套代码都是教学演示级别的。
+
+## 机制：序列化把对象变成了字节流
+
+Java 序列化把对象图转成字节流（`ObjectOutputStream`），反序列化（`ObjectInputStream.readObject`）把它还原回来。问题出在：**还原过程会自动调用对象的一系列方法**——`readObject`、`readResolve`、`hashCode`、`compare` 等，取决于对象类型和它进入的容器。
+
+攻击面由此而来：如果字节流可控，攻击者可以精心构造对象图，让这些"自动触发的钩子"沿着一串无辜的类一路调用，最终落地到 `Runtime.exec` 之类的危险操作。这一串调用路径，就是 gadget chain（利用链/调用链）。
+
+最小复现场景：
+
+```java
+// 服务端：反序列化了不可信的数据 —— 漏洞点
+ObjectInputStream ois =
+    new ObjectInputStream(new ByteArrayInputStream(data));
+Object obj = ois.readObject();  // 钩子方法在此触发
+```
+
+审计时看到"readObject 的入参来自用户可控源（HTTP 参数、Cookie、MQ 消息、缓存、RMI/JNDI 端点）"，就值得停下来追一遍。
+
+## 第一步：URLDNS —— 无害的"是否存在"探测器
+
+动手利用之前，先要回答"这个点真的会反序列化吗"。URLDNS 是经典的探测 gadget：它只触发一次 DNS 查询，无任何攻击效果，适合盲测。
+
+原理一图流：`HashMap.readObject` → key（URL 对象）的 `hashCode` → `URLStreamHandler.hashCode` → `InetAddress.getByName`（DNS 查询）。
+
+```java
+HashMap<URL, String> map = new HashMap<>();
+map.put(new URL("http://xxxx.dnslog.cn"), "probe");
+// 序列化 map，作为输入提交给目标
+```
+
+要点：URL 对象的 hashCode 有缓存，构造后要先反序列化前的对象没有触发过查询（构造时 put 会触发一次，可用反射清掉缓存），才能保证"收到 DNS 请求 = 目标反序列化了我们的数据"。
+
+用 DNSLog 平台收请求，命中即证明：输入点反序列化可达。下一步才是找可用的 gadget。
+
+## 利用链思路：入口、中转、执行器
+
+以最经典的 CommonsCollections 链为例，拆解 gadget 的三段结构：
+
+- **入口（source）**：反序列化时自动触发的点。`PriorityQueue.readObject`、`AnnotationInvocationHandler.readObject` 等
+- **中转（connector）**：把调用"变换"到任意类的方法上。`TransformedMap`、`InvokerTransformer` 这类会在 `hashCode`/`compare`/`get` 里调用 Transformer 链的类
+- **执行器（sink）**：最终达到危险能力的点。`InvokerTransformer.transform` 反射调用任意方法、`TemplatesImpl` 加载字节码等
+
+构造链条的本质是**在类路径的"合法代码"里找到一条方法调用接力**。这也解释了为什么这类漏洞的修复往往不是改一行代码，而是依赖升级——链的每一环单看都是正常功能。
+
+手工挖新链的思路（学习阶段建议先读懂 ysoserial 的已有链再尝试）：
+
+1. 收集入口点：所有 `readObject` 直接触发的类
+2. 从危险 sink 反向追：`Runtime.exec`、`defineClass`、JNDI lookup 的调用方
+3. 中间用反射调用类（Transformer 类族）桥接，比对方法签名（参数类型、返回类型）能否衔接
+
+## 审计切入点清单
+
+实际项目里，反序列化问题的高发位置：
+
+- 自研框架的会话/缓存：把对象直接序列化进 Cookie、Redis，且没做完整性校验
+- 老版本中间件与组件：WebLogic、JBoss、Shiro（rememberMe）、各类 MQ——组件层面的反序列化 RCE 历史案例一大把
+- RMI/JNDI 服务暴露
+- 依赖里的危险 gadget：`commons-collections` 3.x/4.x、`commons-beanutils` 等在 classpath 里，一旦有反序列化点即组合成链
+
+工具层面：`ysoserial` 生成测试 payload 配合 DNSLog 验证；代码层用 gaffer/CodeQL 这类数据流分析从 `readObject` 追 source 到 sink。注意所有验证都只在**授权的测试环境**进行。
+
+## 防御：给序列化数据上一把锁
+
+- **优先消灭反序列化需求**：数据交换用 JSON 等文本协议 + 严格 schema，天然没有 gadget 问题
+- 必须用原生序列化时：加完整性校验（HMAC），密钥不落客户端
+- **过滤反序列化的类**：`ObjectInputFilter`（JEP 290，JDK 9+）白名单放行，从根上断掉任意 gadget 的类加载：
+
+```java
+ObjectInputStream ois = new ObjectInputStream(in);
+ois.setObjectInputFilter(info -> {
+    if (info.serialClass() != null &&
+        ALLOWED.contains(info.serialClass().getName())) {
+        return ObjectInputFilter.Status.ALLOWED;
+    }
+    return ObjectInputFilter.Status.REJECTED;
+});
+```
+
+- 升级依赖：新版本 commons-collections 对危险 Transformer 做了处理，但"升级解决历史链"不等于"以后没有新链"，过滤才是长效机制
+
+---
+
+反序列化是理解 Java 安全的钥匙：读懂它，JNDI 注入、RMI 攻击面、表达式注入这些话题会接连打开。后续我会把审计方法论整理成系列，下一篇聊 Java Web 过滤器链中的鉴权绕过审计思路。

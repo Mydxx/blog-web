@@ -15,9 +15,33 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "我的博客",
-  description: "一个使用 Next.js 和 MDX 构建的个人博客",
+  metadataBase: new URL("https://mydxx.github.io"),
+  title: {
+    default: "Mydxx // Blog",
+    template: "%s - Mydxx // Blog",
+  },
+  description: "安全研究 × AI × 工程实践 — 渗透测试、代码审计、AI 应用的个人博客",
+  openGraph: {
+    title: "Mydxx // Blog",
+    description: "安全研究 × AI × 工程实践",
+    url: "https://mydxx.github.io",
+    siteName: "Mydxx // Blog",
+    type: "website",
+    locale: "zh_CN",
+  },
 };
+
+// 首帧渲染前同步应用主题，避免暗色模式闪白
+const themeInitScript = `
+(function () {
+  try {
+    var stored = localStorage.getItem("theme");
+    var dark = stored === "dark" || (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.classList.toggle("dark", dark);
+    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  } catch (e) {}
+})();
+`;
 
 export default function RootLayout({
   children,
@@ -26,11 +50,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 min-h-screen flex flex-col`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-paper text-ink dark:bg-night dark:text-moon min-h-screen flex flex-col transition-colors duration-200`}
       >
         <Header />
-        <main className="flex-1 max-w-4xl mx-auto px-4 py-8 w-full">
+        <main className="flex-1 w-full max-w-3xl mx-auto px-5 sm:px-6 py-10">
           {children}
         </main>
         <Footer />

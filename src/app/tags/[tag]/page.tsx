@@ -1,4 +1,4 @@
-import { getAllTags, getPostsByTag } from "@/lib/posts";
+import { getAllTags, getPostsByTag, getAllPosts } from "@/lib/posts";
 import PostCard from "@/components/PostCard";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: PageProps) {
   const { tag } = await params;
   const decodedTag = decodeURIComponent(tag);
   return {
-    title: `标签: ${decodedTag} - 我的博客`,
+    title: `#${decodedTag}`,
   };
 }
 
@@ -29,23 +29,27 @@ export default async function TagPage({ params }: PageProps) {
     <div>
       <Link
         href="/tags"
-        className="inline-flex items-center gap-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 mb-6 transition-colors"
+        className="inline-flex items-center gap-1.5 font-mono text-xs text-muted hover:text-term mb-8 transition-colors"
       >
-        <ArrowLeft className="w-4 h-4" />
-        返回标签页
+        <ArrowLeft className="w-3.5 h-3.5" />
+        cd ..
       </Link>
 
-      <h1 className="text-2xl font-bold mb-6">标签: {decodedTag}</h1>
+      <header className="pb-8 mb-4 border-b border-line">
+        <h1 className="font-mono text-2xl font-semibold">
+          <span className="text-term">#</span>
+          {decodedTag}
+        </h1>
+        <p className="mt-2 font-mono text-xs text-muted">
+          {posts.length} posts
+        </p>
+      </header>
 
-      {posts.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400">暂无相关文章</p>
-      ) : (
-        <div className="grid gap-6">
-          {posts.map((post) => (
-            <PostCard key={post.slug} post={post} />
-          ))}
-        </div>
-      )}
+      <div>
+        {posts.map((post) => (
+          <PostCard key={post.slug} post={post} />
+        ))}
+      </div>
     </div>
   );
 }

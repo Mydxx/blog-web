@@ -1,29 +1,47 @@
-import { getAllPosts } from "@/lib/posts";
+import { getAllPosts, getAllTags } from "@/lib/posts";
 import PostCard from "@/components/PostCard";
 
 export default function Home() {
   const posts = getAllPosts();
+  const tags = getAllTags();
 
   return (
     <div>
-      <section className="mb-12">
-        <h1 className="text-3xl font-bold mb-4">欢迎来到我的博客</h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          这里分享我的技术见解、生活感悟和项目经验。
+      {/* 终端 hero */}
+      <section className="pt-6 pb-10">
+        <p className="font-mono text-sm text-term">
+          $ whoami<span className="cursor-blink ml-1" aria-hidden="true" />
+        </p>
+        <h1 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight leading-tight">
+          安全研究 <span className="text-term">×</span> AI{" "}
+          <span className="text-term">×</span> 工程实践
+        </h1>
+        <p className="mt-4 text-muted leading-relaxed max-w-xl">
+          记录渗透测试、代码审计、AI 应用的学习与实践，
+          偶尔写写桌面开发和这个博客本身。
+        </p>
+        <p className="mt-6 font-mono text-xs text-muted">
+          <span className="text-term">→</span> {posts.length} posts ·{" "}
+          {tags.length} tags · <a href="/rss.xml" className="hover:text-term transition-colors">rss</a>
         </p>
       </section>
 
+      {/* 文章列表 */}
       <section>
-        <h2 className="text-xl font-semibold mb-6">最新文章</h2>
-        {posts.length === 0 ? (
-          <p className="text-gray-500 dark:text-gray-400">暂无文章，敬请期待！</p>
-        ) : (
-          <div className="grid gap-6">
-            {posts.map((post) => (
+        <p className="font-mono text-sm text-muted mb-2">
+          <span className="text-term">$</span> ls ./posts --sort=date
+        </p>
+        <div>
+          {posts.length === 0 ? (
+            <p className="text-muted py-8 font-mono text-sm">
+              total 0 — 暂无文章
+            </p>
+          ) : (
+            posts.map((post) => (
               <PostCard key={post.slug} post={post} />
-            ))}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </section>
     </div>
   );

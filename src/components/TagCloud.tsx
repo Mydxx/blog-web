@@ -1,21 +1,23 @@
 import Link from "next/link";
-import { Tag } from "lucide-react";
 
 interface TagCloudProps {
   tags: string[];
+  counts?: Record<string, number>;
 }
 
-export default function TagCloud({ tags }: TagCloudProps) {
+export default function TagCloud({ tags, counts }: TagCloudProps) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2.5">
       {tags.map((tag) => (
         <Link
           key={tag}
           href={`/tags/${encodeURIComponent(tag)}`}
-          className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-gray-100 dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+          className="font-mono text-xs px-2.5 py-1 rounded border border-line text-muted hover:border-term hover:text-term transition-colors"
         >
-          <Tag className="w-3 h-3" />
-          {tag}
+          #{tag}
+          {counts && counts[tag] !== undefined && (
+            <span className="ml-1.5 opacity-60">{counts[tag]}</span>
+          )}
         </Link>
       ))}
     </div>

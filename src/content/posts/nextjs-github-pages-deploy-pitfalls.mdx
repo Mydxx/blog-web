@@ -1,0 +1,110 @@
+---
+title: "Next.js 静态博客部署 GitHub Pages 的坑与解法"
+date: "2026-09-15"
+tags: ["Next.js", "GitHub Actions", "部署"]
+excerpt: "静态导出到 GitHub Pages 的四个经典坑：trailingSlash 导致的资源 404、docs/ 目录与 Actions 部署的冲突、缓存导致页面不更新、构建超时。附完整可用的 workflow。"
+---
+
+把 Next.js 博客部署到 GitHub Pages，文档看着简单，实际踩一轮坑得半天。这篇把我遇到的坑全部列出来，每个都附解法和原理，最后给出一份验证可用的 workflow。
+
+## 坑一：子路径下的资源 404
+
+GitHub Pages 对 `mydxx.github.io` 这种用户站点，域名根就是仓库根，本来不需要 `basePath`。但如果你发现页面白屏、控制台一片 404，先检查 `_next/static/` 资源的引用路径。
+
+`trailingSlash: true` 配置下，`/posts/foo` 会重定向到 `/posts/foo/`，**如果 GitHub Pages 的相对路径解析没对齐，嵌套页面的资源就会找不到**。解法是保持配置一致，并确认导出产物的 index.html 里资源引用是绝对路径（`/_next/...`）而非相对路径（`../_next/...`）：
+
+```typescript
+const nextConfig: NextConfig = {
+  output: "export",
+  trailingSlash: true,   // 与 Pages 的目录式路由对齐
+  images: { unoptimized: true },
+};
+```
+
+项目站点（`mydxx.github.io/blog-web/`）才需要额外配 `basePath: "/blog-web"`。用户站点不用。
+
+## 坑二：docs/ 目录与 Actions 部署打架
+
+GitHub Pages 有两种部署来源：
+
+1. **从分支部署**：选一个分支 + 目录（`main /docs` 或 `main /root`）
+2. **GitHub Actions 部署**：workflow 上传产物直接发布
+
+两者只能选一个，混用会出现" Actions 部署了，但页面还是旧的"——因为 Pages 实际服务的还是分支上的 docs/。我的最终方案：**仓库同时提交 docs/ 目录 + Actions workflow**，Actions 构建 `out/` 后复制覆盖 `docs/`，再上传同一目录发布。构建和源码版本永远一致，分支上的 docs/ 只是兜底。
+
+```yaml
+- name: Copy output to docs
+  run: |
+    cp -r out/. docs/
+```
+
+## 坑三：页面不更新 = 缓存三层叠加
+
+"我明明推了代码，页面怎么还是旧的？"按顺序排查三层缓存：
+
+1. **Actions 构建缓存**：`npm cache` 缓存的是依赖，一般无害；但自己加的产物缓存要小心
+2. **Pages CDN 缓存**：部署完成后等 1–5 分钟，强刷（Ctrl+Shift+R）再看
+3. **浏览器 Service Worker**：如果之前加过 PWA/SW，先注销
+
+另外 `concurrency` 配置能避免多个部署排队互相覆盖：
+
+```yaml
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+```
+
+## 坑四：免费 runner 构建超时
+
+标准 runner 6 小时上限一般用不完，但 Next.js 首次构建大依赖安装慢，加上 MDX 编译，谨慎起见给构建步骤加超时保护并开依赖缓存：
+
+```yaml
+- uses: actions/setup-node@v4
+  with:
+    node-version: "20"
+    cache: "npm"
+- run: npm ci     # 用 ci 而不是 install，锁版本 + 更快
+```
+
+`npm ci` 严格按 lock 文件装，速度更快、可复现，CI 环境的标准答案。
+
+## 完整 workflow
+
+```yaml
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run build
+      - run: cp -r out/. docs/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+## 一点心得
+
+静态博客的部署链路不长，但每一环（导出配置、Pages 来源、CDN 缓存）都可能让你白推一次代码。**排查的顺序永远是：本地构建产物对不对 → 仓库里产物对不对 → Pages 服务的版本对不对 → CDN/浏览器缓存**，从生产端往用户端逐段验证，比在浏览器里反复强刷高效得多。

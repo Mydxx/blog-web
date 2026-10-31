@@ -1,101 +1,89 @@
 ---
-title: "使用 Next.js 和 MDX 构建博客"
-date: "2024-03-19"
-tags: ["Next.js", "MDX", "教程"]
-excerpt: "本文介绍如何使用 Next.js 14 和 MDX 从零开始构建一个现代化的个人博客，包含完整的配置步骤和核心功能实现。"
+title: "这个博客的架构：Next.js 16 + MDX 静态博客的工程实现"
+date: "2026-07-06"
+tags: ["Next.js", "MDX", "工程实践"]
+excerpt: "为什么选 Next.js + MDX 而不是 Hugo/Hexo？数据层设计、MDX 管线、静态导出与 GitHub Pages 部署流水线的完整实现。"
 ---
 
-# 使用 Next.js 和 MDX 构建博客
+这个博客没有用 Hugo 或 Hexo，而是自己用 Next.js + MDX 搭的。这篇文章讲清楚为什么这么做，以及核心的工程实现。
 
-在这篇文章中，我将分享如何使用 Next.js 14 和 MDX 从零开始构建一个现代化的个人博客。
+## 为什么不用现成的静态站点生成器
 
-## 为什么选择 Next.js + MDX？
+Hugo 快、Hexo 生态熟，但有两点让我选择了自建：
 
-### 1. Next.js 的优势
+1. **定制自由度**：安全研究者的博客经常要贴代码、画表格、嵌工具输出，自建意味着排版规则完全由我控制——比如这篇文章里的终端风标题前缀，就是一行 CSS 的事
+2. **组件即内容**：MDX 让文章里可以直接用 React 组件，写系列文章时可以抽可复用的展示组件
 
-- **App Router**: 现代化的路由系统
-- **Server Components**: 默认服务端渲染，性能更好
-- **静态站点生成 (SSG)**: 适合博客这种内容为主的站点
-- **丰富的生态**: 大量第三方库支持
+代价是要自己处理数据层和构建，但一个博客的数据层其实很简单。
 
-### 2. MDX 的优势
+## 数据层：文件系统即数据库
 
-- **Markdown + JSX**: 在 Markdown 中使用 React 组件
-- **代码高亮**: 轻松实现语法高亮
-- **内容管理**: 简单直观的文件管理
-
-## 项目结构
-
-```
-blog/
-├── app/                  # Next.js App Router
-├── components/           # React 组件
-├── content/
-│   └── posts/           # MDX 文章
-└── lib/                 # 工具函数
-```
-
-## 核心功能
-
-### 文章列表
-
-使用 `fs` 和 `gray-matter` 读取本地 MDX 文件：
+文章就是 `src/content/posts/` 下的 MDX 文件，`src/lib/posts.ts` 负责读取和解析：
 
 ```typescript
-import fs from "fs";
-import matter from "gray-matter";
-
-export function getAllPosts() {
-  const posts = fs.readdirSync("content/posts");
-  return posts.map((filename) => {
-    const file = fs.readFileSync(`content/posts/${filename}`, "utf-8");
-    const { data } = matter(file);
-    return data;
-  });
+export function getPostBySlug(slug: string): Post {
+  const fullPath = path.join(postsDirectory, `${slug}.mdx`);
+  const fileContents = fs.readFileSync(fullPath, "utf8");
+  const { data, content } = matter(fileContents);
+  return {
+    slug,
+    content,
+    title: data.title,
+    date: data.date,
+    tags: data.tags ?? [],
+    // ...frontmatter 到 Post 对象的映射
+  };
 }
 ```
 
-### MDX 渲染
+gray-matter 解析 frontmatter，剩下的就是纯函数式的过滤和排序。没有数据库、没有 API，`git push` 就是发布流程的全部。
 
-使用 `next-mdx-remote` 渲染 MDX 内容：
+一个踩过的坑：**中文的阅读时长不能用空格分词计算**。按每分钟 200 词算，一篇两千字的中文文章会得出 1 分钟——因为中文没有空格。正确做法是分开统计：
 
 ```typescript
-import { MDXRemote } from "next-mdx-remote/rsc";
-
-export default function Post({ content }) {
-  return (
-    <MDXRemote source={content} />
-  );
-}
+const cjkChars = content.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+const words = content
+  .replace(/[\u3400-\u9fff]/g, " ")
+  .trim()
+  .split(/\s+/)
+  .filter(Boolean).length;
+const minutes = Math.ceil(cjkChars / 400 + words / 200);
 ```
 
-## 部署
+## MDX 渲染管线
 
-使用 GitHub Actions 实现自动化部署到 GitHub Pages：
+文章页用 `next-mdx-remote/rsc` 在服务端渲染 MDX，rehype 插件链处理增强：
 
-```yaml
-name: Deploy to GitHub Pages
-on:
-  push:
-    branches: [main]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm ci
-      - run: npm run build
-      - uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./out
+```typescript
+<MDXRemote
+  source={post.content}
+  options={{
+    mdxOptions: {
+      rehypePlugins: [rehypeSlug, rehypeHighlight],
+    },
+  }}
+/>
 ```
 
-## 总结
+- `rehype-slug`：给标题生成锚点 id
+- `rehype-highlight`：代码块语法高亮，配合自定义的 highlight.js 配色
 
-Next.js + MDX 是一个非常适合构建博客的技术组合，既保留了 Markdown 的简洁性，又能使用 React 强大的组件能力。
+注意这两个插件**必须显式传入**，装了包不等于生效——这个博客一开始就只是装了插件没接管线，代码块是纯文本。
 
-如果你有任何问题，欢迎留言讨论！
+## 静态导出与部署
+
+`next.config.ts` 三个关键配置：
+
+```typescript
+const nextConfig: NextConfig = {
+  output: "export",     // 静态导出，产出纯 HTML
+  trailingSlash: true,  // /posts/xxx/ 形式，GitHub Pages 友好
+  images: { unoptimized: true }, // 导出模式不支持默认图片优化
+};
+```
+
+`npm run build` 产出 `out/` 目录，GitHub Actions 把它复制到 `docs/` 并推给 GitHub Pages。完整的部署细节（包括 `trailingSlash` 和相对路径的坑）单独写了一篇：[Next.js 静态博客部署 GitHub Pages 的坑与解法](/posts/nextjs-github-pages-deploy-pitfalls/)。
+
+## 值得吗
+
+说实话，如果只是想写文章，Hugo 五分钟能上线。但如果你想要一个完全属于自己的排版系统、并且享受折腾的过程，自建的价值在于**每一行 CSS 都是你写的**——下次想改风格，改的是自己的代码，而不是别人的主题。

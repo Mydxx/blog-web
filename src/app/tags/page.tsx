@@ -1,23 +1,34 @@
-import { getAllTags } from "@/lib/posts";
+import { getAllTags, getAllPosts } from "@/lib/posts";
 import TagCloud from "@/components/TagCloud";
 
 export const metadata = {
-  title: "标签 - 我的博客",
-  description: "浏览所有文章标签",
+  title: "标签",
+  description: "按标签浏览全部文章",
 };
 
 export default function TagsPage() {
   const tags = getAllTags();
+  const posts = getAllPosts();
+
+  const counts: Record<string, number> = {};
+  posts.forEach((post) => {
+    post.tags.forEach((tag) => {
+      counts[tag] = (counts[tag] ?? 0) + 1;
+    });
+  });
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">所有标签</h1>
-
-      {tags.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400">暂无标签</p>
-      ) : (
-        <TagCloud tags={tags} />
-      )}
+      <p className="font-mono text-sm text-muted mb-2">
+        <span className="text-term">$</span> ls ./tags
+      </p>
+      <div className="mt-4">
+        {tags.length === 0 ? (
+          <p className="text-muted font-mono text-sm">total 0 — 暂无标签</p>
+        ) : (
+          <TagCloud tags={tags} counts={counts} />
+        )}
+      </div>
     </div>
   );
 }

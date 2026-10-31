@@ -1,0 +1,81 @@
+---
+title: "Windows 安全研究环境治理：把缓存、依赖和数据全部搬离 C 盘"
+date: "2026-08-01"
+tags: ["Windows", "环境配置", "运维"]
+excerpt: "C 盘又红了吗？npm/pip/Maven/Gradle 缓存迁移、AppData 讲不清理的应用数据、mklink 目录联接的正确用法，一套完整的系统盘减负方案。"
+---
+
+安全研究的机器有个特点：工具链又多又杂，Python 环境十几个、Node 项目几十个、JDK 好几个版本，再加上各种工具的缓存。半年下来 C 盘先报警。这篇文章是我整理的一套系统盘减负方案，核心原则一句话：**C 盘只留系统本体，一切可再生成的数据去 D 盘**。
+
+## 先搞清楚 C 盘被谁吃了
+
+用 WizTree 或 TreeSize 扫一遍 C 盘（比资源管理器快几百倍），通常能抓到这几类大户：
+
+| 目录 | 占用者 | 可迁移性 |
+| --- | --- | --- |
+| `AppData\Local\npm-cache` | npm | 配置迁移 |
+| `AppData\Local\pip\cache` | pip | 配置迁移 |
+| `~\.m2` / `~\.gradle` | Maven/Gradle | 配置迁移 |
+| `AppData\Roaming\npm` | 全局包 | 配置迁移 |
+| `AppData\Local\Google\Chrome` | 浏览器缓存 | 部分可迁 |
+| `hiberfil.sys` / `pagefile.sys` | 系统休眠/页面文件 | 系统设置 |
+| 各种应用的"用户数据" | Electron 应用重灾区 | 逐个处理 |
+
+## 开发缓存：环境变量一劳永逸
+
+大部分工具链都支持环境变量或配置文件指定缓存位置。集中写进一个脚本，重装系统时照着跑一遍：
+
+```powershell
+# npm
+setx npm_config_cache "D:\AI-tools\cache\npm"
+npm config set cache "D:\AI-tools\cache\npm" --global
+
+# pip
+setx PIP_CACHE_DIR "D:\AI-tools\cache\pip"
+
+# Maven（写入 settings.xml 的 localRepository）
+# <localRepository>D:\AI-tools\cache\maven</localRepository>
+
+# Gradle
+setx GRADLE_USER_HOME "D:\AI-tools\cache\gradle"
+
+# Go
+setx GOPATH "D:\AI-tools\cache\go"
+```
+
+注意 `setx` 写的是**用户级持久环境变量**，只对新开的进程生效，当前窗口要手动刷新或重开。
+
+## mklink：对付不讲道理的应用
+
+有些应用硬编码把数据写进 `AppData`，不给配置项。这时候用目录联接（junction）骗过它：
+
+```powershell
+# 以笔记类应用为例：真实数据在 D 盘，C 盘留一个"传送门"
+Move-Item "$env:APPDATA\SomeApp" "D:\app-data\SomeApp"
+New-Item -ItemType Junction -Path "$env:APPDATA\SomeApp" -Target "D:\app-data\SomeApp"
+```
+
+三个注意点：
+
+1. **先移动、后建联接**，顺序反了会得到一个指向自己的死循环
+2. Junction 不需要管理员权限（符号链接 symlink 需要），优先用 junction
+3. **操作前确认应用没在运行**，否则数据文件被占用，移动一半会损坏
+
+哪些应用值得这么干？判断标准：数据是否大且持续增长。笔记类、下载类、游戏启动器通常值得；几十 MB 的小工具不值得，徒增复杂度。
+
+## 系统级的三板斧
+
+- **关闭休眠**（笔记本慎用）：`powercfg /h off`，直接回收数 GB 到十几 GB 的 `hiberfil.sys`
+- **页面文件移到数据盘**：系统属性 → 高级 → 性能设置 → 虚拟内存，把页面文件指到 D 盘
+- **存储感知 + 定期清理**：`设置 → 系统 → 存储` 开启存储感知，临时文件自动清
+
+## 一条运维习惯
+
+每装一个新工具，顺手查一下它的缓存/数据落在哪：
+
+```powershell
+npm config get cache
+pip cache dir
+```
+
+如果答案是 C 盘，当场迁走。**环境治理是习惯，不是一次性工程**——这句话对 C 盘和代码仓库都成立。

@@ -1,102 +1,91 @@
 ---
-title: "TypeScript 最佳实践指南"
-date: "2024-03-18"
-tags: ["TypeScript", "编程语言", "教程"]
-excerpt: "本文总结了 TypeScript 开发中的一些最佳实践，包括类型推断、泛型使用、类型守卫等核心概念的深入讲解。"
+title: "TypeScript 工程实践：类型是文档，更是护栏"
+date: "2026-06-20"
+tags: ["TypeScript", "工程实践"]
+excerpt: "写工具和面板代码时总结的 TypeScript 实践：unknown 优于 any、可辨识联合建模状态、satisfies 校验常量、类型守卫收敛判断逻辑。"
 ---
 
-# TypeScript 最佳实践指南
+类型系统的价值不是给编译器看，而是给三个月后的自己看。这篇总结我写工具代码时反复用到的几个 TypeScript 实践，每一条都对应一个真实踩过的坑。
 
-TypeScript 已经成为现代前端开发的标配。本文将分享一些 TypeScript 开发中的最佳实践。
+## 用 unknown 逼自己处理边界
 
-## 类型推断
-
-善用 TypeScript 的类型推断能力，避免不必要的类型标注：
+`any` 会传染——一个 `any` 进来，整条调用链的类型检查都失效了。解析外部输入（API 响应、配置文件、命令行输出）时用 `unknown`，编译器会强迫你在使用前收窄类型：
 
 ```typescript
-// 推荐：让 TypeScript 推断类型
-const numbers = [1, 2, 3];
-const doubled = numbers.map((n) => n * 2);
-
-// 不推荐：过度标注
-const numbers: number[] = [1, 2, 3];
-const doubled: number[] = numbers.map((n: number): number => n * 2);
+function parseToolOutput(raw: string): ScanResult {
+  const data: unknown = JSON.parse(raw);
+  if (isValidScanResult(data)) {
+    return data; // 类型守卫通过后才有完整类型
+  }
+  throw new Error("unexpected tool output format");
+}
 ```
 
-## 泛型
+`JSON.parse` 返回的永远是 `any`，**先赋值给 `unknown` 变量再校验**，这一步顺手就能把数据边界管起来。
 
-使用泛型提高代码的可复用性：
+## 可辨识联合：把非法状态消灭在编译期
 
-```typescript
-// 通用 API 响应类型
-interface ApiResponse<T> {
-  data: T;
-  status: number;
-  message: string;
-}
-
-// 使用泛型
-interface User {
-  id: number;
-  name: string;
-}
-
-const response: ApiResponse<User> = {
-  data: { id: 1, name: "张三" },
-  status: 200,
-  message: "Success",
-};
-```
-
-## 类型守卫
-
-使用类型守卫确保类型安全：
+工具类代码最常见的是多状态流转。用枚举字符串字面量 + 开关式的接口建模，比一堆可选字段可靠得多：
 
 ```typescript
-interface Cat {
-  meow(): void;
-}
+type ScanState =
+  | { status: "idle" }
+  | { status: "running"; progress: number; current: string }
+  | { status: "done"; findings: Finding[] }
+  | { status: "error"; message: string };
 
-interface Dog {
-  bark(): void;
-}
-
-function isCat(animal: Cat | Dog): animal is Cat {
-  return (animal as Cat).meow !== undefined;
-}
-
-function makeSound(animal: Cat | Dog) {
-  if (isCat(animal)) {
-    animal.meow();
-  } else {
-    animal.bark();
+function render(state: ScanState) {
+  switch (state.status) {
+    case "running":
+      // 这里只有 progress 和 current，不可能访问 findings
+      break;
+    case "done":
+      return state.findings;
   }
 }
 ```
 
-## 常用工具类型
-
-TypeScript 内置了许多实用的工具类型：
-
-- `Partial<T>` - 将所有属性变为可选
-- `Required<T>` - 将所有属性变为必需
-- `Pick<T, K>` - 从 T 中选择部分属性
-- `Omit<T, K>` - 从 T 中排除部分属性
+配合穷尽性检查，新增状态时编译器直接报错指出所有漏改的分支：
 
 ```typescript
-interface User {
-  id: number;
-  name: string;
-  email: string;
+function assertNever(x: never): never {
+  throw new Error("unhandled state: " + JSON.stringify(x));
 }
-
-// 创建部分更新的类型
-type UpdateUser = Partial<User>;
-
-// 创建用户名的只读类型
-type ReadonlyName = Readonly<Pick<User, "name">>;
 ```
 
-## 总结
+## satisfies：校验常量但不丢字面量类型
 
-掌握这些 TypeScript 最佳实践，能让你的代码更加健壮和可维护。
+配置对象（比如字典路径、目标分段）用 `satisfies` 校验结构，同时保留每个字面量的精确类型：
+
+```typescript
+const config = {
+  timeout: 5000,
+  wordlist: "common.txt",
+  threads: 32,
+} satisfies Config;
+
+// config.threads 依然是字面量类型 32，且拼错字段名直接报错
+```
+
+比 `const config: Config = {...}` 好在：类型注解会把对象"拓宽"成接口类型，`satisfies` 只检查不拓宽。
+
+## 类型守卫：让判断逻辑只写一次
+
+```typescript
+function isFinding(x: unknown): x is Finding {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    "url" in x &&
+    "status" in x
+  );
+}
+```
+
+把 `x is T` 的判断收敛成独立函数，所有需要校验的地方复用同一个实现。守卫函数写得越严，下游代码的空值处理就越少。
+
+## 类型体操要适度
+
+最后泼一盆冷水：工具代码的目标是稳定和可读，不是炫技。条件类型、infer、递归类型这些用在库的公共 API 上值得，用在业务代码里只会让下一个改代码的人（包括你自己）痛苦。**类型是护栏，不是迷宫。**
+
+我的判断标准：一个类型定义如果需要注释才能看懂，先想想是不是建模方式错了。

@@ -1,0 +1,85 @@
+---
+title: "基于 Fofa API 的 GUI 信息搜集工具实践"
+date: "2026-08-08"
+tags: ["信息搜集", "Fofa", "Python", "工具开发"]
+excerpt: "Fofa API 查询语法、翻页与数据分页陷阱、GUI 工具的信息架构设计，以及在授权项目中做资产测绘的合规边界。"
+---
+
+信息搜集是渗透测试的第一步，空间测绘引擎（Fofa、Shodan、Hunter）是这一步的核心数据源。命令行查几次还行，一个项目几百条查询就需要趁手的工具了。这篇记录我折腾 Fofa GUI 信息搜集工具的过程，重点在 API 的坑和工具设计。
+
+## Fofa API 的基本用法
+
+API 很简单，一个 GET 请求：
+
+```python
+import base64
+import requests
+
+def fofa_query(query: str, page: int = 1, size: int = 100):
+    qbase64 = base64.b64encode(query.encode()).decode()
+    resp = requests.get(
+        "https://fofa.info/api/v1/search/all",
+        params={
+            "email": EMAIL,
+            "key": API_KEY,
+            "qbase64": qbase64,
+            "page": page,
+            "size": size,
+            "fields": "host,ip,port,protocol,title,domain",
+        },
+        timeout=15,
+    )
+    return resp.json()
+```
+
+查询语法举几个高频例子：
+
+```
+title="管理后台" && country="CN" && region="Beijing"
+body="thinkphp" && status_code="200"
+icon_hash="xxxxxxxx"          # 用 favicon hash 追溯同一套源码的站点
+cert="example.com"            # 证书关联资产，同组织域名一网打尽
+```
+
+`icon_hash` 和 `cert` 是我最常用的两个维度——攻击面收敛时，同一套模板部署的站点往往犯同样的错误。
+
+## API 的三个坑
+
+**1. FPoints 计费口径**。API 调用按查询消耗积分，`size` 大小、字段数量都影响消耗。批量跑任务前先小 `size` 试跑，确认语法没问题再放量，否则一次语法错误的查询也扣分。
+
+**2. 翻页上限**。普通会员翻页深度有限制，超过后返回空结果而不是报错。分页逻辑要处理"空页即终点"，而不是固定页数跑到底：
+
+```python
+results = []
+page = 1
+while page <= max_pages:
+    data = fofa_query(query, page=page)
+    batch = data.get("results", [])
+    if not batch:
+        break  # 空页说明到底了
+    results.extend(batch)
+    page += 1
+```
+
+**3. API 限速**。高频调用会被暂时限制。批量任务加个 0.5–1 秒的间隔，慢一点比被断流强。
+
+## GUI 工具的信息架构
+
+做 GUI 的初衷是：查询历史可复用、结果可筛选导出、多引擎可切换。设计上我踩过弯路，最后沉淀出三条原则：
+
+1. **查询即对象**。每条查询保存语法、时间、消耗、结果数，可以一键重跑对比增量——资产监控的本质就是 diff
+2. **结果表格优先，地图和图表是点缀**。渗透测试者最终要的是能复制粘贴的 host:port 列表，别为了好看把主信息藏进三级界面
+3. **API Key 绝不硬编码**。从配置文件或环境变量读，配置文件加入 `.gitignore`——开源工具仓库里搜出 key 是最丢人的事故
+
+## 合规边界：工具没有立场，使用者要有
+
+必须强调：空间测绘数据只能用于**授权范围内的资产评估**。两条自我约束：
+
+- 只查询自己有授权的目标组织资产，或做行业统计这类聚合研究
+- 测绘结果（尤其带漏洞标识的）视为敏感数据，不外传、不公开
+
+工具是中性的，写工具、用工具、分享工具的过程里，授权边界这条线要一直画在明面上。
+
+---
+
+这类工具的本质是"把重复劳动固化成按钮"。下一个迭代方向是把查询模板做成 Skills，让 AI Agent 根据目标特征自动组合查询语句——这是后话，也是这个博客会持续写下去的主题。

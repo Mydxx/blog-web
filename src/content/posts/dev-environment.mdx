@@ -1,58 +1,101 @@
 ---
-title: "我的开发环境配置"
-date: "2024-03-17"
-tags: ["工具", "效率", "开发环境"]
-excerpt: "分享我的日常开发环境配置，包括编辑器、终端、Git 配置等工具的详细设置，帮助你打造高效的开发环境。"
+title: "2026 年我的安全研究开发环境"
+date: "2026-07-18"
+tags: ["环境配置", "Windows", "效率工具"]
+excerpt: "重装系统后从零搭一遍环境：终端、Git、Node、Python、JDK 的取舍与配置，以及国内网络环境下的镜像与代理方案。"
 ---
 
-# 我的开发环境配置
+一个顺手的环境能省掉每天几十次的小烦躁。这篇文章记录我重装 Windows 后从零搭建安全研究开发环境的完整过程，都是踩过坑之后沉淀下来的配置。
 
-一个高效的开发环境可以大大提高工作效率。分享一下我的日常开发环境配置。
+## 终端：Windows Terminal + PowerShell
 
-## 编辑器配置
-
-我使用 VS Code，主要插件：
-
-- **GitLens** - Git 可视化
-- **ESLint** - 代码检查
-- **Prettier** - 代码格式化
-- **Tailwind CSS IntelliSense** - Tailwind 提示
-
-### VS Code settings.json
-
-```json
-{
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "editor.tabSize": 2,
-  "files.autoSave": "onFocusChange"
-}
-```
-
-## 终端配置
-
-使用 Windows Terminal + PowerShell，配合以下配置：
+Windows 下不再折腾第三方终端，Windows Terminal 配合 PowerShell 7 已经足够好用：
 
 ```powershell
-# Aliases
-Set-Alias -Name ll -Value Get-ChildItem
-Set-Alias -Name gs -Value git status
+winget install Microsoft.WindowsTerminal
+winget install Microsoft.PowerShell
 ```
 
-## Git 配置
+必做的两件事：
+
+1. **把默认 Profile 换成 PowerShell 7**，而不是系统自带的 5.1，语法和工具链都现代化了
+2. **字体换成 Nerd Font**（推荐 Cascadia Code NF 或更纱黑体），否则 Oh My Posh 的图标全是方块
+
+提示符用 Oh My Posh，我的配置只保留三样信息：路径、git 状态、上一条命令的退出码：
+
+```powershell
+oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\jandedobbeleer.omp.json" | Invoke-Expression
+```
+
+安全研究场景有个小细节：提示符里显示退出码，跑 Exploit 脚本时一眼就知道上一条是成功还是失败。
+
+## Git 与 SSH
+
+```powershell
+winget install Git.Git
+```
+
+装完先配全局项，尤其是 Windows 下的换行符处理：
 
 ```bash
-# 用户信息
-git config --global user.name "Your Name"
-git config --global user.email "your.email@example.com"
-
-# 默认分支名
+git config --global core.autocrlf input
+git config --global user.name "Mydxx"
 git config --global init.defaultBranch main
-
-# 推送方式
-git config --global push.default current
 ```
 
-## 结语
+GitHub 走 SSH 而不是 HTTPS + Token，`ssh-keygen` 生成 ed25519 密钥后传到 GitHub，以后所有仓库操作都不用再碰凭据弹窗。注意 `~/.ssh/config` 里可以为不同账号配置不同 Host 别名，多账号管理会干净很多。
 
-保持工具链的简洁和一致，比不断追逐新工具更重要。希望这些配置对你有所帮助！
+## Node 与 Python：版本管理器接管
+
+**不要用安装包直接装 Node**，卸载升级都麻烦。用 nvm-windows 或 fnm：
+
+```powershell
+winget install Schniz.fnm
+fnm install 22
+```
+
+Python 同理，用 py launcher 管多版本，虚拟环境一律 `python -m venv`，每个工具一个独立环境，互不污染：
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\activate
+```
+
+Burp、sqlmap 这类安全工具对 Python 版本各有要求，隔离环境能避免依赖升级把工具搞坏。
+
+## JDK：安全工具的隐形依赖
+
+很多审计工具（各版本 Burp 插件、反编译器、Java 利用工具）依赖不同版本的 JDK。我的做法是装一个 JDK 17 作主力，再下载一个 JDK 8 的免安装版解压备用，需要时临时切 `JAVA_HOME`：
+
+```powershell
+$env:JAVA_HOME = "D:\tools\jdk8"
+```
+
+## 国内网络的镜像与代理
+
+这是绕不开的一环，配置一次受益所有项目：
+
+```bash
+# npm 淘宝镜像
+npm config set registry https://registry.npmmirror.com
+
+# pip 清华镜像
+pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+Git clone 加速可以走代理：
+
+```bash
+git config --global http.proxy http://127.0.0.1:7890
+git config --global https.proxy http://127.0.0.1:7890
+```
+
+但注意：**给 Git 配全局代理后访问内网 GitLab 会失败**，建议用 `--local` 只给需要的仓库配，或者加 `no_proxy` 排除段。
+
+## 最后一条原则：所有缓存离开 C 盘
+
+系统盘永远是最先爆掉的。npm、pip、Maven 的缓存目录全部通过配置指向数据盘，`pip cache dir`、`npm config get cache` 逐个确认。这个话题我在[另一篇文章](/posts/windows-dev-env-c-drive-cleanup/)里展开了完整的方案，包括迁移 `AppData` 里那些不讲道理的应用数据。
+
+---
+
+环境搭好之后把上面的命令存成 `setup.ps1`，下次重装系统十分钟恢复到 90% 的状态。

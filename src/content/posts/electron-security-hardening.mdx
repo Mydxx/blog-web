@@ -1,0 +1,115 @@
+---
+title: "Electron 应用安全加固清单：从桌面笔记工具实战总结"
+date: "2026-10-05"
+tags: ["Electron", "安全加固", "桌面开发"]
+excerpt: "用 Electron 开发桌面笔记工具时整理的加固清单：contextIsolation、CSP、沙箱、链接跳转、更新链信任，每条附错误写法与正确写法。"
+---
+
+Electron 的安全问题几乎都源于同一个设计：它把 Chromium 和 Node.js 缝在一个进程模型里，任何一边的信任边界画错，另一边就成了跳板。我开发桌面笔记工具时整理了这份加固清单，每一条都给出错误写法和正确写法。
+
+## 一、渲染进程不碰 Node：隔离是底线
+
+最核心的一条。历史上无数 Electron 应用的漏洞路径都是：渲染进程被 XSS → 拿到 Node 能力 → 文件系统/命令执行。
+
+```javascript
+// 主进程 webPreferences —— 错误写法
+new BrowserWindow({
+  webPreferences: {
+    nodeIntegration: true,        // 渲染进程直接有 Node：灾难
+    contextIsolation: false,      // 预加载与页面共享上下文：灾难
+  },
+});
+
+// 正确写法
+new BrowserWindow({
+  webPreferences: {
+    nodeIntegration: false,
+    contextIsolation: true,       // 默认值，别关
+    sandbox: true,
+    preload: path.join(__dirname, "preload.js"),
+  },
+});
+```
+
+页面需要的能力通过 preload 里的 `contextBridge` 显式暴露，接口设计成"动词"而不是"万能通道"：
+
+```javascript
+// preload.js —— 只暴露白名单能力
+const { contextBridge, ipcRenderer } = require("electron");
+
+contextBridge.exposeInMainWorld("notes", {
+  save: (content) => ipcRenderer.invoke("notes:save", content),
+  list: () => ipcRenderer.invoke("notes:list"),
+  // 错误示范：exposeInMainWorld("raw", ipcRenderer) —— 等于白隔离了
+});
+```
+
+注意暴露的是**具名方法**，不是 ipcRenderer 本身。前者是能力清单，后者是整个文件系统。
+
+## 二、IPC 输入校验：主进程是最后一道门
+
+preload 暴露的每个 IPC 通道，主进程侧都要当作"来自互联网的输入"处理：
+
+```javascript
+// 主进程 —— 校验再使用
+ipcMain.handle("notes:save", (_event, content) => {
+  if (typeof content !== "string" || content.length > MAX_LEN) {
+    throw new Error("invalid content");
+  }
+  return saveNote(content);
+});
+```
+
+涉及路径的参数尤其危险（路径穿越），要么不接受路径参数（内部映射 ID → 路径），要么 resolve 后校验前缀仍在数据目录内。
+
+## 三、CSP：把脚本来源锁死
+
+Electron 默认没有强制 CSP，需要在 HTML 里显式声明。开发期允许 localhost，生产环境收紧：
+
+```html
+<meta
+  http-equiv="Content-Security-Policy"
+  content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+/>
+```
+
+两个注意点：
+
+1. **别用 `'unsafe-eval'`**，某些老库会劝你加，等同于给 XSS 发通行证
+2. 笔记类应用如果允许用户内容渲染成 HTML，CSP 是 XSS 后果的兜底，这一层不能省
+
+## 四、链接跳转与窗口劫持
+
+内容里的外链默认会在应用窗口内打开，可能加载任意远程页面（你的应用壳 + 远程内容 = 钓鱼温床）。拦截并交给系统浏览器：
+
+```javascript
+mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  if (url.startsWith("https://")) {
+    shell.openExternal(url);
+  }
+  return { action: "deny" };   // 永远不在应用内开新窗口
+});
+```
+
+同时处理导航事件，阻止页面内跳转到 `file://` 或远程地址。
+
+## 五、更新链：签名验证不是可选项
+
+应用更新机制是供应链攻击的经典入口。自查三点：
+
+- 更新源走 HTTPS，且校验发布包签名（electron-updater 配合代码签名证书）
+- 生产环境**关闭 DevTools 远程调试**和未授权的 `--remote-debugging-port`
+- 不动态加载远程代码：所有 JS 随应用打包，不在运行时 `eval` 远程脚本
+
+## 清单汇总
+
+| 项目 | 目标 |
+| --- | --- |
+| contextIsolation + sandbox | 渲染进程零 Node 能力 |
+| contextBridge 白名单 | 最小暴露面 |
+| IPC 输入校验 | 主进程零信任 |
+| CSP | 脚本来源锁死 |
+| 窗口拦截 | 外链出域、防窗口劫持 |
+| 更新签名 | 供应链可信 |
+
+Electron 的默认配置这几年已经越来越安全（contextIsolation 和 sandbox 默认开启），大多数事故来自开发者主动关闭默认值。**加固的第一原则：不理解一个安全开关的含义之前，别动它。**
