@@ -1,14 +1,20 @@
 import { MDXRemote } from "next-mdx-remote/rsc";
 import rehypeSlug from "rehype-slug";
 import rehypeHighlight from "rehype-highlight";
+import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import { getPostBySlug, getPostSlugs, getAdjacentPosts } from "@/lib/posts";
+import { extractToc } from "@/lib/toc";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import TagCloud from "@/components/TagCloud";
+import TOC from "@/components/TOC";
+import CodePre from "@/components/CodePre";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
+
+const SITE_URL = "https://mydxx.github.io";
 
 export async function generateStaticParams() {
   const slugs = getPostSlugs();
@@ -21,6 +27,14 @@ export async function generateMetadata({ params }: PageProps) {
   return {
     title: post.title,
     description: post.excerpt,
+    alternates: { canonical: `${SITE_URL}/posts/${post.slug}/` },
+    openGraph: {
+      title: post.title,
+      description: post.excerpt,
+      url: `${SITE_URL}/posts/${post.slug}/`,
+      type: "article",
+      publishedTime: post.date,
+    },
   };
 }
 
@@ -28,9 +42,34 @@ export default async function PostPage({ params }: PageProps) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
   const { newer, older } = getAdjacentPosts(slug);
+  const toc = extractToc(post.content);
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.excerpt,
+    datePublished: post.date,
+    inLanguage: "zh-CN",
+    keywords: post.tags.join(", "),
+    url: `${SITE_URL}/posts/${post.slug}/`,
+    author: {
+      "@type": "Person",
+      name: "Mydxx",
+      url: "https://github.com/Mydxx",
+    },
+  };
 
   return (
     <article>
+      {/* 桌面端固定定位目录（xl 及以上屏幕） */}
+      <TOC items={toc} />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       <Link
         href="/"
         className="inline-flex items-center gap-1.5 font-mono text-xs text-muted hover:text-term mb-8 transition-colors"
@@ -58,9 +97,26 @@ export default async function PostPage({ params }: PageProps) {
       <div className="prose max-w-none">
         <MDXRemote
           source={post.content}
+          components={{ pre: CodePre }}
           options={{
             mdxOptions: {
-              rehypePlugins: [rehypeSlug, rehypeHighlight],
+              rehypePlugins: [
+                rehypeSlug,
+                [
+                  rehypeAutolinkHeadings,
+                  {
+                    behavior: "append",
+                    properties: { className: ["anchor"], ariaHidden: true },
+                    content: {
+                      type: "element",
+                      tagName: "span",
+                      properties: {},
+                      children: [{ type: "text", value: "#" }],
+                    },
+                  },
+                ],
+                rehypeHighlight,
+              ],
             },
           }}
         />

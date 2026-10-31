@@ -3,7 +3,7 @@ export default function Footer() {
     <footer className="border-t border-line mt-20">
       <div className="max-w-3xl mx-auto px-5 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-3">
         <p className="font-mono text-xs text-muted">
-          © 2026 mydxx — built with{" "}
+          © {new Date().getFullYear()} mydxx — built with{" "}
           <span className="text-term">next.js</span> + mdx
         </p>
         <div className="flex items-center gap-5 font-mono text-xs text-muted">
