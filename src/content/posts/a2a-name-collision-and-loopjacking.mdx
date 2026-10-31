@@ -1,0 +1,84 @@
+---
+title: "当 Agent 会认错人：A2A 名称碰撞与审批劫持的知识碰撞笔记"
+date: "2026-10-31"
+tags: ["AI安全", "Agent", "A2A", "知识碰撞"]
+excerpt: "同一作者一周内发布的两篇 A2A 研究：显示名被当成路由键导致任务错发，人工批准未被绑定到具体操作导致批 A 执行 B。拆解机制与实证边界，并给出我的统一抽象与防御清单。"
+---
+
+在 [0xRead](https://0xread.com/) 刷到两篇前后脚发布的 A2A（Agent2Agent 协议）安全研究，作者是同一人（A. A. Kumar），主题却恰好构成一组对仗：**机器认错了机器**（名称碰撞），和**机器辜负了人**（审批劫持）。分开读是两个有趣的漏洞案例，合起来读能看到 Agent 系统里一个更古老、也更普遍的病灶。这篇是我的拆解加知识碰撞笔记——两篇原文的机制实证以原作者的研究为准，碰撞部分是我的理解。
+
+## 三十秒背景：A2A 的信任模型
+
+A2A 是 Google 推出的 Agent 间协作协议：每个 Agent 发布一张 AgentCard（名称、能力、端点），宿主或客户端据此把任务路由给对端；涉及敏感操作时插入人工审批（human-in-the-loop）。注意两个"看似安全"的设计：**卡片名称是给人看的**，**人工批准是最后一道闸**。这两篇研究分别把这两个假设打穿了。
+
+## 第一篇：Agent Name Collision——名字成了路由键
+
+**论文**：Agent Name Collision Attacks in Multi-Agent Systems（[博客](https://adithyanak.com/agent-name-collision-attacks-multi-agent-systems/) / [arXiv:2609.27624](https://arxiv.org/html/2609.27624v1)）
+
+核心问题一句话：宿主把 `AgentCard.name` 这个**展示字段**提升成了本地路由键。攻击者只要让一个低信任 Agent 与受信任 Agent 重名，按名字路由的查找就会歧义——first-match 取错、后写覆盖、broker 折叠到同一路由——任务从此发往攻击者的对端。
+
+作者给出五条件合取模型，全部满足才构成机密性/完整性攻击：共享路由域、攻击者控制重名 Agent 的卡片、冲突解析偏向攻击者、调用方按歧义名称选择目标、双方存在实质性信任差异。缺一条，问题就退化为正确性 bug。
+
+最有价值的部分是**证明边界**。作者实测 7 个开源实现（Google ADK、UiPath LangChain、BeeAI、Solace Agent Mesh、Mozilla Any-Agent、AutoDev），把结论诚实分成四档：
+
+| 结论 | 状态 |
+| --- | --- |
+| 任务错发到错误对端 | 已证明（6 条路径） |
+| Broker 委派上下文泄露 | 条件性（依赖队列/ACL 配置） |
+| 经由提示注入的后续动作 | 复合路径，未评估生产模型可靠性 |
+| A 专属凭证直接转移 | 未证明（实测为零） |
+
+缓解原则浓缩成一句值得贴在工位上的话：**names for people, stable IDs for authority**——名字给人用，稳定 ID 管权限；别名冲突必须 fail-closed，绝不静默选胜者。
+
+## 第二篇：Loopjacking——批的是 A，执行的是 B
+
+**论文**：Loopjacking: Hijacking Human-in-the-Loop Approval（[博客](https://adithyanak.com/loopjacking-in-a2a-implementations) / [arXiv:2609.21081](https://arxiv.org/abs/2609.21081)）
+
+人工审批为什么会被"劫持"？因为审批与执行之间存在时间差，而部分实现没有把**批准决定绑定到具体操作**上。这是经典的 TOCTOU 结构，作者命名为 Loopjacking，并区分两个变体：
+
+1. **表示型**：待审操作里本来就藏着 B，审批界面只显示了不完整的 A（OpenClaw 的 shell wrapper 只展示 inline payload、不展示完整参数向量，2026.2.24 修复）。
+2. **审批后状态替换**：人看到的确实是精确的 A，但批准消费前，可变的待处理状态被换成了 B。
+
+第二个变体的 LangGraph 攻击链值得细看：maker（发起者）与 approver（审批者）权限分离，maker 虽然无权 resume，却可以通过 `message.command.update` **用同一个 Task/Call ID 把待审调用替换成 BB**；approver 基于早期视图提交 stale approve 时，Server 从**当前** thread state 恢复执行——工具以 approver 的身份和权限收到了 BB。整条链上没有任何一处比较"先前展示的动作"与"当前同 ID 动作"是否一致。
+
+实证范围同样克制而扎实：7 个 Agno AgentOS 版本、12 个 LangGraph Agent Server 版本复现；**OpenAI Agents SDK 作为反例**——它的 canonical invocation record 跨 pause/serialize/resume 全程保留，篡改后的请求在 resume 时被直接拒绝。这说明缺陷是实现选择，不是命中注定。
+
+## 知识碰撞：我的三层理解
+
+**第一层：这是同一个错误的两种长相。** 两篇论文分开引用了 CWE-706 和 TOCTOU，但我认为它们共享一个更根本的抽象：**让非权威标识进入了安全决策**。名称碰撞里，展示名（给人看的）成了路由键；Loopjacking 里，任务 ID（用于关联的）成了批准绑定的依据。这个问题在计算机安全史上有个熟悉的家族谱系——confused deputy、CSRF（请求里的会话凭证不代表操作意图）、银行 U 盾"确认页与实际指令不一致"。Agent 系统没有发明新病灶，只是把老病灶的发病率提高了一个数量级：因为现在"按名字找对象"和"按 ID 恢复状态"是框架替你写的。
+
+**第二层：规范的"未定义地带"是系统性风险源。** 两位作者都谨慎地强调"这是实现缺陷，不是协议通杀"——A2A 规范确实没有强制按名称路由。但历史版本的规范要求名称必填可读、却不提供稳定标识符与冲突语义，等于把最关键的安全决策留给了每个实现者自由发挥。这和当年 OAuth 2.0 各家实现偏差、JWT `alg` 字段滥用的剧本一致：**规范没说"必须怎样"的地方，生态会收敛到最省事的写法，而最省事的写法几乎总是把展示值当主键**。评估一个新协议的安全性，与其盯着它"规定了什么"，不如盘点它"没规定什么"。
+
+**第三层：与我自己 AI pentest Agent 拆解笔记的呼应。** 我之前拆解 AI pentest Agent 时总结过一条：防越界的正解是"目标范围作为不可变约束传入每一次工具调用"，而不是指望模型自觉。Loopjacking 的修复（canonical approval record 绑定完整工具名 + 参数 + 目标 + 发起者 + digest，use-time 精确比对后原子消费）和名称碰撞的修复（稳定 ID 路由）本质都是同一句话：**把授权绑定到不可变的具体对象上，任何"会话级""名字级"的授权都会被时序拆开**。Object-capability 学派三十年前就论证过的事，Agent 时代需要重新交一遍学费。
+
+**一剂冷静剂**：两位作者（同一人）都明确承认局限——purposive 样本而非流行度调查、LangGraph 路径条件性成立、单一研究员、无独立复现。所以正确的恐慌级别不是"Agent 平台已被通杀"，而是：这类缺陷是**设计模式级**的，Agent 平台浪潮下的实现同质化（都抄同一套 interrupt/resume 范式）会让同一个坑被批量复制。研究和修复都还来得及。
+
+## 给工程师的防御清单
+
+| 场景 | 错误模式 | 正确做法 |
+| --- | --- | --- |
+| Agent 注册与路由 | 按 `card.name` 建索引/路由 | 稳定 ID（绑定认证来源）路由，名称仅展示 |
+| 名称冲突处理 | first-match / last-write-wins | fail-closed：拒绝精确及规范化等价的重名 |
+| 人工审批 | 审批记录只关联 Task ID | 绑定 canonical descriptor：工具 + 全部参数 + 目标 + 发起者 + digest |
+| 审批消费 | resume 时反序列化调用者提供的操作 | use-time 与 approved descriptor 精确比对，原子消费防重放 |
+| 待审状态可变性 | 任何持写权限者可改 pending 调用 | deny-update 策略：非审批者不可变更待审内容 |
+| 审批界面 | 只渲染 partial descriptor（如 inline payload） | 完整渲染全部 material arguments（含位置参数、环境、重定向） |
+
+## 给审计者的两条测试不变量
+
+1. **重名测试**：向被测系统注册两个不同来源的同名 Agent（含大小写、空白、Unicode 规范化变体），追踪最终汇聚点——选中的客户端、HTTP 端点、工具闭包、broker 主题。注册成功或返回 200 都不证明绑定正确。
+2. **审批 TOCTOU 测试**：走完"展示 A → 批准 → 执行"全流程，在批准与执行之间替换待审操作的参数（保持调用 ID 不变），观察是否被拒。合法的直发 B 应当仍被权限策略拒绝。
+
+## 结语
+
+这两篇研究单看是两个高质量漏洞案例，合看是 Agent 安全的一堂方法论课：**信任绑定失败不会因为系统变智能而消失，只会换一层抽象继续存在**。Agent 时代的"名称"与"批准"，就是 Web 时代的 Cookie 与 CSRF Token——区别只在于，这一次我们有前三十年的学费单。
+
+## 致谢
+
+本文是阅读与碰撞的产物，特此致谢：
+
+- **A. A. Kumar**（[adithyanak.com](https://adithyanak.com/)）：两篇原文研究《[Agent Name Collision Attacks in Multi-Agent Systems](https://adithyanak.com/agent-name-collision-attacks-multi-agent-systems/)》与《[Loopjacking: Hijacking Human-in-the-Loop Approval](https://adithyanak.com/loopjacking-in-a2a-implementations)》的作者，其严谨的证明边界划分（已证明/条件性/未证明三档）是本文敢写"冷静剂"一节的底气；对应的 arXiv 论文（[2609.27624](https://arxiv.org/abs/2609.27624)、[2609.21081](https://arxiv.org/abs/2609.21081)）提供了更完整的机制细节。
+- **[0xRead](https://0xread.com/)（@超级帕鲁）**：本文的两篇引子均经由其精选摘要发现——《[A2A任务被错发：Agent Name Collision攻击](https://0xread.com/?article=cmv1wbynj0foym3nqkn28ta6p)》与《[A2A实现里的批准劫持：看的是A，执行的是B](https://0xread.com/?article=cmv2zf8r50gk8m3nqfc9docmp)》，精准的中文导读为我节省了大量筛选成本。
+- **[AlpacaX](https://www.alpacax.com/blog/loopjacking-what-you-approved-isnt-what-ran)**：对 Loopjacking 的通俗解读辅助了理解。
+
+本文的机制描述以原作者论文为准，碰撞与引申部分仅代表我的个人理解，欢迎指正。

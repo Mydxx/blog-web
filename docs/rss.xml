@@ -7,6 +7,17 @@
     <language>zh-CN</language>
     <atom:link href="https://mydxx.github.io/rss.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>当 Agent 会认错人：A2A 名称碰撞与审批劫持的知识碰撞笔记</title>
+      <link>https://mydxx.github.io/posts/a2a-name-collision-and-loopjacking/</link>
+      <guid isPermaLink="true">https://mydxx.github.io/posts/a2a-name-collision-and-loopjacking/</guid>
+      <pubDate>Sat, 31 Oct 2026 00:00:00 GMT</pubDate>
+      <description>同一作者一周内发布的两篇 A2A 研究：显示名被当成路由键导致任务错发，人工批准未被绑定到具体操作导致批 A 执行 B。拆解机制与实证边界，并给出我的统一抽象与防御清单。</description>
+      <category>AI安全</category>
+      <category>Agent</category>
+      <category>A2A</category>
+      <category>知识碰撞</category>
+    </item>
+    <item>
       <title>Java 代码审计入门：反序列化与利用链挖掘思路</title>
       <link>https://mydxx.github.io/posts/java-deserialization-audit/</link>
       <guid isPermaLink="true">https://mydxx.github.io/posts/java-deserialization-audit/</guid>
