@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 <url>
+<loc>https://mydxx.github.io/posts/sso-signature-not-enough/</loc>
+<lastmod>2026-11-02T00:00:00.000Z</lastmod>
+</url>
+<url>
 <loc>https://mydxx.github.io/posts/agent-trust-assumptions/</loc>
 <lastmod>2026-11-01T00:00:00.000Z</lastmod>
 </url>
@@ -58,14 +62,14 @@
 </url>
 <url>
 <loc>https://mydxx.github.io/</loc>
-<lastmod>2026-11-01T12:19:59.490Z</lastmod>
+<lastmod>2026-11-01T16:34:49.455Z</lastmod>
 </url>
 <url>
 <loc>https://mydxx.github.io/tags/</loc>
-<lastmod>2026-11-01T12:19:59.490Z</lastmod>
+<lastmod>2026-11-01T16:34:49.455Z</lastmod>
 </url>
 <url>
 <loc>https://mydxx.github.io/about/</loc>
-<lastmod>2026-11-01T12:19:59.490Z</lastmod>
+<lastmod>2026-11-01T16:34:49.455Z</lastmod>
 </url>
 </urlset>

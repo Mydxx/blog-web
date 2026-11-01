@@ -1,0 +1,68 @@
+---
+title: "签名是真的，用户是假的：一次 SSO 账户接管复盘"
+date: "2026-11-02"
+tags: ["渗透测试", "逻辑漏洞", "SSO", "JWT"]
+excerpt: "对接 Microsoft 登录的平台验了签名和 nonce，却没看 aud、tid、iss，还拿邮箱直接查库发 session。自建一个 Azure 租户就能接管管理员账号，CVSS 顶格。复盘这条链子，顺便聊聊拿 email 当身份这个老毛病。"
+---
+
+对接第三方登录这活儿，干开发和干安全的都不陌生。甲方系统十个里有八个挂着"企业微信登录"或者"Sign in with Microsoft"，实现方式基本是抄官方文档的 demo 再改改。最近看到一个 Microsoft SSO 的账户接管案例，整条链子看完，我的第一反应是窒息。这洞的技术含量真不高，省掉的代码拢共三行，但就是这三行，在线上跑了好几年，还挂着"已接入微软官方登录"的牌子。
+
+## 流程其实很简单
+
+目标是套 Go 写的平台，白盒测的，接了 Microsoft 登录。正常流程这么走：浏览器跳微软登录页，用户登完，微软回一个 id_token，本质是个 JWT，应用后端验签、查库、建 session。
+
+sso.go 这个文件里的校验逻辑，验了两样东西：签名，拿微软的 JWKS 公钥验，多租户应用走 /common 端点取 key，这本身没毛病；nonce，防重放。到这里为止，及格。
+
+问题从下一个字段开始。JWT 里有个 claims 是 token 的户口本：aud 说明这个 token 是发给谁的，iss 说明谁签发的，tid 说明签发方是哪个 Azure 租户。
+
+这个平台一个都没看。验完签名直接掏出 token 里的 email，丢给 GetUserByEmail 查库，查到人就发 session。
+
+```go
+// sso.go 里实际发生的事
+claims := verifySignature(rawToken, msJWKS) // 验了
+verifyNonce(claims)                          // 也验了
+user := db.GetUserByEmail(claims["email"])   // 拿邮箱找人，直接发 session
+```
+
+## email 是地址，不是身份
+
+为什么拿邮箱找人不行？因为在一个 Azure 租户里，管理员给用户填什么邮箱，微软管不着。你自己注册个免费租户，建个用户，邮箱一栏填 admin@target.com，微软照样给你签出一个真 token。
+
+对，token 是真的。微软的签名、正经的 JWKS、没过期的有效期，全挑不出毛病。但它是从攻击者的租户里签出来的，跟目标平台没有半毛钱关系。
+
+这里还有个助攻。平台有个无需认证的接口，返回 ssoLoginUrl，里面带着 nonce 和 state。这俩本来是防重放的唯一屏障，直接白送。
+
+于是整条链子成了这样：注册自己的租户，建用户，邮箱填成对方管理员的；从那个接口摸走 nonce 和 state；把登录链接里的租户 ID、client ID、回调地址全换成自己的，nonce 和 state 原样保留；登录自己租户的账号，从回调地址里拿到 id_token；POST 给目标平台。签名验证通过，nonce 验证通过，邮箱一查，管理员本尊，session 到手。
+
+全程不需要目标用户点任何东西。CVSS 直接顶格 10.0，CWE-290，认证过程中的身份伪装。
+
+说白了，email 是个收货地址，谁都能往上面写自己家；身份得是身份证号，出生就带着、换不到的那种。拿邮箱关联账号这个设计，默认了"知道这个邮箱的人就是这个邮箱的主人"，SRC 里一堆越权，根子都在这类想当然上。
+
+## 这病不是个案
+
+同款问题在开源圈一抓一把。Zammad，工单系统，开了"首次登录自动关联账号"之后照样拿 email 认人，CVSS 9.1，修复版的思路是校验 xms_edov 这个声明，微软用它标记"这个邮箱的域名所有权已经验证过"，没这个标记的邮箱一律当没验证处理。Vikunja，任务管理工具，OIDC 开了邮箱回退就跳过 email_verified 检查，同款接管。两个都是正经 CVE，影响版本都是各自的主力版本线。
+
+你看，这甚至不是新手才踩的坑。Zammad 和 Vikunja 都是有年头、有社区、有代码审查的项目，一样把"签名验过了就安全"写进了主流程。
+
+## 修法拢共几行
+
+- aud 和自己的 client ID 对不上，直接拒
+- tid 过租户白名单；单租户应用更干脆，把 issuer 锁死在租户专属端点上
+- iss 和 tid 的对应关系检查一遍
+- 查用户改用 tid 加 oid，这俩合起来才是用户的唯一身份。email 最多在受邀那一次用，用完立刻绑定到 tid 加 oid 上
+- 顺手把那个吐 nonce 的接口堵上
+
+审计的时候问自己三个问题就够了：key 是不是从 /common 取的，取了就必须校验 tid；aud 有没有跟自己的 client ID 比对；用户查找是不是落在 email、upn 这类可变字段上。再补一刀，provider 说"邮箱已验证"的那个标志位，你是真读了，还是只当它存在。
+
+## 写在最后
+
+签名能证明的只有一件事：这个 token 是真的。它没说这个 token 是发给你的，也没说背后站的是谁。这两件事都归授权管，密码学帮不上忙。
+
+下次对接登录，抄完 demo，记得把那三行补上。
+
+## 参考
+
+- https://samipp.com.np/posts/breaking-microsoft-sso-how-a-rogue-tenant-led-to-account-takeover/
+- https://nvd.nist.gov/vuln/detail/CVE-2026-84458
+- https://nvd.nist.gov/vuln/detail/CVE-2026-62367
+- https://0xread.com/?article=cmu3wcc1i02tr6hz23cbikdtt

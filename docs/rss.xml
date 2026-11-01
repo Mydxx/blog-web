@@ -7,6 +7,17 @@
     <language>zh-CN</language>
     <atom:link href="https://mydxx.github.io/rss.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>签名是真的，用户是假的：一次 SSO 账户接管复盘</title>
+      <link>https://mydxx.github.io/posts/sso-signature-not-enough/</link>
+      <guid isPermaLink="true">https://mydxx.github.io/posts/sso-signature-not-enough/</guid>
+      <pubDate>Mon, 02 Nov 2026 00:00:00 GMT</pubDate>
+      <description>对接 Microsoft 登录的平台验了签名和 nonce，却没看 aud、tid、iss，还拿邮箱直接查库发 session。自建一个 Azure 租户就能接管管理员账号，CVSS 顶格。复盘这条链子，顺便聊聊拿 email 当身份这个老毛病。</description>
+      <category>渗透测试</category>
+      <category>逻辑漏洞</category>
+      <category>SSO</category>
+      <category>JWT</category>
+    </item>
+    <item>
       <title>名字当身份，批准当授权：Agent 工作流的两个想当然</title>
       <link>https://mydxx.github.io/posts/agent-trust-assumptions/</link>
       <guid isPermaLink="true">https://mydxx.github.io/posts/agent-trust-assumptions/</guid>
