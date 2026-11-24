@@ -15,14 +15,14 @@ const TOPICS = [
     label: "安全研究",
     match: (p: PostMetadata) =>
       p.tags.some((t) =>
-        ["渗透测试", "代码审计", "漏洞分析", "安全研究", "安全加固", "逻辑漏洞", "AI安全", "JWT", "SSO", "文件上传"].includes(t)
+        ["渗透测试", "代码审计", "漏洞分析", "安全研究", "安全加固", "逻辑漏洞", "AI安全", "提示词注入", "MCP", "JWT", "SSO", "文件上传"].includes(t)
       ),
   },
   {
     id: "ai",
     label: "AI / Agent",
     match: (p: PostMetadata) =>
-      p.tags.some((t) => ["AI", "Agent", "A2A", "AI安全"].includes(t)),
+      p.tags.some((t) => ["AI", "Agent", "A2A", "AI安全", "MCP", "提示词注入"].includes(t)),
   },
   {
     id: "tool",

@@ -7,6 +7,17 @@
     <language>zh-CN</language>
     <atom:link href="https://mydxx.github.io/rss.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>拆透提示词注入的「致命三要素」：普通安全工程师 5 分钟评估 AI 风险的标尺</title>
+      <link>https://mydxx.github.io/posts/lethal-trifecta-prompt-injection/</link>
+      <guid isPermaLink="true">https://mydxx.github.io/posts/lethal-trifecta-prompt-injection/</guid>
+      <pubDate>Tue, 24 Nov 2026 00:00:00 GMT</pubDate>
+      <description>很多安全工程师面对 AI 应用不知从何测起。本文精读 Simon Willison 提出的「致命三要素（The Lethal Trifecta）」，用通俗类比讲透大模型为什么分不清「指令」和「数据」，并给出一套 5 分钟就能落地的实战评估标尺。</description>
+      <category>AI安全</category>
+      <category>Agent</category>
+      <category>提示词注入</category>
+      <category>方法论</category>
+    </item>
+    <item>
       <title>免代理抓包：从零造一个跨端浏览器安全工作台 TraceBurp</title>
       <link>https://mydxx.github.io/posts/traceburp-browser-proxy-design/</link>
       <guid isPermaLink="true">https://mydxx.github.io/posts/traceburp-browser-proxy-design/</guid>
@@ -16,6 +27,28 @@
       <category>渗透测试</category>
       <category>浏览器扩展</category>
       <category>工程实践</category>
+    </item>
+    <item>
+      <title>MCP 工具投毒拆解：为什么你只看了一眼「加法工具」，SSH 私钥就没了？</title>
+      <link>https://mydxx.github.io/posts/mcp-tool-poisoning-explained/</link>
+      <guid isPermaLink="true">https://mydxx.github.io/posts/mcp-tool-poisoning-explained/</guid>
+      <pubDate>Sun, 22 Nov 2026 00:00:00 GMT</pubDate>
+      <description>越来越多研发在 Cursor 和 AI 助手里接入第三方 MCP Server。本文精读 Invariant Labs 披露的 MCP Tool Poisoning 研究，从零解释 MCP 是什么、藏在工具描述里的隐蔽指令如何骗过人和模型，以及落地可查的审计要点。</description>
+      <category>AI安全</category>
+      <category>Agent</category>
+      <category>MCP</category>
+      <category>漏洞分析</category>
+    </item>
+    <item>
+      <title>读懂 DeepMind CaMeL 论文：为什么防提示词注入不能靠「把模型训聪明」，而要靠架构隔离？</title>
+      <link>https://mydxx.github.io/posts/camel-defeating-prompt-injection-by-design/</link>
+      <guid isPermaLink="true">https://mydxx.github.io/posts/camel-defeating-prompt-injection-by-design/</guid>
+      <pubDate>Fri, 20 Nov 2026 00:00:00 GMT</pubDate>
+      <description>靠写更严的系统提示词或加一层检测模型能防住提示词注入吗？精读 Google DeepMind 与 ETH Zurich 联合发表的 CaMeL 论文，用通俗例子讲透「特权模型 + 隔离模型 + 能力权限（Capabilities）」这套真正可落地的防注入架构。</description>
+      <category>AI安全</category>
+      <category>Agent</category>
+      <category>架构分析</category>
+      <category>安全研究</category>
     </item>
     <item>
       <title>鉴权测试备忘：从 Cookie 属性到 JWT 边界的实战清单</title>
