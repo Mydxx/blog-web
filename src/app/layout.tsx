@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import CommandPalette from "@/components/CommandPalette";
+import BackToTop from "@/components/BackToTop";
+import { getAllPostMeta } from "@/lib/posts";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -20,7 +23,7 @@ export const metadata: Metadata = {
     default: "Mydxx // Blog",
     template: "%s - Mydxx // Blog",
   },
-  description: "安全研究 × AI × 工程实践 — 渗透测试、代码审计、AI 应用的个人博客",
+  description: "安全研究 × AI × 工程实践 — 渗透测试、代码审计、安全工具与 AI 应用的个人博客",
   openGraph: {
     title: "Mydxx // Blog",
     description: "安全研究 × AI × 工程实践",
@@ -48,19 +51,23 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const posts = getAllPostMeta();
+
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-paper text-ink dark:bg-night dark:text-moon min-h-screen flex flex-col transition-colors duration-200`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-paper text-ink min-h-screen flex flex-col transition-colors duration-200`}
       >
         <Header />
-        <main className="flex-1 w-full max-w-3xl mx-auto px-5 sm:px-6 py-10">
+        <main className="flex-1 w-full max-w-3xl mx-auto px-5 sm:px-6 py-10 animate-fade-up">
           {children}
         </main>
         <Footer />
+        <CommandPalette posts={posts} />
+        <BackToTop />
       </body>
     </html>
   );

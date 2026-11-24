@@ -7,6 +7,28 @@
     <language>zh-CN</language>
     <atom:link href="https://mydxx.github.io/rss.xml" rel="self" type="application/rss+xml"/>
     <item>
+      <title>免代理抓包：从零造一个跨端浏览器安全工作台 TraceBurp</title>
+      <link>https://mydxx.github.io/posts/traceburp-browser-proxy-design/</link>
+      <guid isPermaLink="true">https://mydxx.github.io/posts/traceburp-browser-proxy-design/</guid>
+      <pubDate>Tue, 24 Nov 2026 00:00:00 GMT</pubDate>
+      <description>日常 70% 的轻中度测试其实不想开 Burp 折腾系统代理和 CA 证书。记录从零造出零依赖 MV3 跨端抓包工作台 TraceBurp 的架构取舍：精确 Fetch 拦截、DNR 覆写重放、静默响应替换与双端差异。</description>
+      <category>工具开发</category>
+      <category>渗透测试</category>
+      <category>浏览器扩展</category>
+      <category>工程实践</category>
+    </item>
+    <item>
+      <title>鉴权测试备忘：从 Cookie 属性到 JWT 边界的实战清单</title>
+      <link>https://mydxx.github.io/posts/jwt-and-session-boundary-notes/</link>
+      <guid isPermaLink="true">https://mydxx.github.io/posts/jwt-and-session-boundary-notes/</guid>
+      <pubDate>Wed, 18 Nov 2026 00:00:00 GMT</pubDate>
+      <description>一份写给自己日常复查用的鉴权测试备忘：去鉴权与身份切换的最小验证闭环、Cookie 安全属性误区、JWT 验签之外的声明盲区，以及如何避免把前端拦截当成服务端安全。</description>
+      <category>渗透测试</category>
+      <category>JWT</category>
+      <category>方法论</category>
+      <category>安全研究</category>
+    </item>
+    <item>
       <title>传上去不算数：把文件上传当成一条流水线来测</title>
       <link>https://mydxx.github.io/posts/file-upload-attack-surface/</link>
       <guid isPermaLink="true">https://mydxx.github.io/posts/file-upload-attack-surface/</guid>

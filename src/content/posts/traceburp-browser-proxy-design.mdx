@@ -1,0 +1,60 @@
+---
+title: "免代理抓包：从零造一个跨端浏览器安全工作台 TraceBurp"
+date: "2026-11-24"
+tags: ["工具开发", "渗透测试", "浏览器扩展", "工程实践"]
+excerpt: "日常 70% 的轻中度测试其实不想开 Burp 折腾系统代理和 CA 证书。记录从零造出零依赖 MV3 跨端抓包工作台 TraceBurp 的架构取舍：精确 Fetch 拦截、DNR 覆写重放、静默响应替换与双端差异。"
+---
+
+做 Web 安全测试的人都有过这种时刻：只是想顺手看一个接口的返回结构、删掉 `Cookie` 测一下未授权访问，或者把响应里的 `"isLogin":false` 改成 `true` 看前端后续逻辑——为了这 30 秒的操作，却要打开 Burp Suite、切系统代理、处理公司内网证书冲突，测完还得把代理关掉。
+
+**TraceBurp** 就是为了解决这 70% 的高频轻量场景而造的：免代理、免装根证书、点击图标直接全屏展开，兼容 Chrome / Edge / Firefox，且保持零第三方运行时依赖。
+
+## 为什么不在 DevTools 里凑合？
+
+浏览器自带的 Network 面板看包没问题，但安全测试最常用的几个动作它天生缺位：
+
+- **无法顺手改包重放**：Copy as fetch 再去 Console 里改，一碰到 `Cookie`、`Origin`、`Referer` 就被浏览器 Fetch 规范静默丢弃。
+- **无法静默固定改响应**：想把某个鉴权接口的 `401` 和字段持续改写成 `200`，DevTools 的 Local Overrides 配置繁琐且不支持正则局部替换。
+- **视野割裂**：请求头、请求体、响应头、响应体被拆在四五个子标签里，而安全工程师最习惯的其实是 Burp 式的一眼看全——右上 Raw 请求，右下 Raw 响应。
+
+## 三个最关键的工程取舍
+
+### 1. 用精确 `Fetch.enable` 取代全量 `*` 拦截
+
+在 Chromium 下，通过 `chrome.debugger` 启用 CDP `Fetch` 域可以实现两阶段拦截和静默响应替换。但最早一版我直接注册了 `{ urlPattern: "*", requestStage: "Response" }`，结果页面里几十个静态 JS 和图片都要先过一遍扩展回调再放行，体感明显变慢。
+
+后来的做法干净得多：
+
+```ts
+// 仅按具体规则路径注册精确模式，无关接口在内核层零开销直通
+const patterns = buildFetchPatterns({
+  interceptEnabled,
+  rules,
+  mocks,
+  replaces,
+});
+// 例：仅启用 /api/auth/status 的响应替换时：
+// [{ urlPattern: "*/api/auth/status*", requestStage: "Response" }]
+```
+
+同时在响应替换阶段先校验 `Content-Type`，遇到图片、字体、`octet-stream` 等二进制 MIME 直接跳过，并在 `Fetch.fulfillRequest` 前剥离 `Content-Length`、`Content-Encoding`、`Transfer-Encoding`，彻底杜绝 `ERR_CONTENT_DECODING_FAILED`。
+
+### 2. 用 `declarativeNetRequest` 突破 Fetch 禁改头限制
+
+在扩展里调用 `fetch()` 重放请求时，`Cookie`、`Origin`、`Referer`、`User-Agent` 属于 Forbidden Header，直接塞进 `Headers` 会被浏览器忽略。
+
+TraceBurp 的重放引擎用了一层带串行互斥锁的 `declarativeNetRequest.updateSessionRules`：发包前针对目标精确 URL 安装一条临时会话规则覆写这些请求头（或在「去鉴权重发」时显式 `remove` 掉 `Cookie`），`finally` 里立刻卸载规则。这样既能在扩展里完成真实的越权/身份切换对比，又不会污染浏览器里的其他正常标签页。
+
+### 3. IndexedDB 元数据与 Body 物理分离
+
+高并发 SPA 页面几分钟就能打满上千条请求。如果把几百 KB 的响应体直接和列表元数据塞在同一张表里，列表滚动和筛选会很快卡死。
+
+TraceBurp 把 `records`（轻量元数据）和 `bodies`（请求/响应正文）物理拆表，批量落库前先在内存按 `id` 合并同批次更新，避免极快 POST 请求的 `reqBody` 被后到的 `resBody` 竞态覆盖；前端列表则配合固定行高虚拟滚动与 LRU 缓存，实测几千条记录依然跟手。
+
+## 诚实面对边界：它替代不了 Burp Suite
+
+做工具最忌讳自我感动。浏览器扩展架构有天然天花板：没有并发爆破（Intruder）、没有带外回连（Collaborator）、抓不到原生客户端流量，也不能构造畸形 TCP/HTTP 走私报文。
+
+所以 TraceBurp 的定位从一开始就很克制：**把日常 70% 的看包、搜正文、划词响应替换、改包重放、原位编解码做到极致顺手**；需要重武器时，点一下「复制 Raw HTTP」无缝贴进 Burp Suite 接力。
+
+项目源码与双端安装包已经开源在 [Mydxx/TraceBurp](https://github.com/Mydxx/TraceBurp)，欢迎试用和提 Issue。
