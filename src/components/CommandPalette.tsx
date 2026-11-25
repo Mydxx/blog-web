@@ -15,6 +15,7 @@ const quickPages = [
   { href: "/archive", label: "时间归档", hint: "git log" },
   { href: "/tags", label: "全部标签", hint: "ls ./tags" },
   { href: "/about", label: "关于 Mydxx", hint: "cat about.txt" },
+  { href: "/dino", label: "小恐龙跑酷", hint: "./dino --play" },
 ];
 
 export default function CommandPalette({ posts }: CommandPaletteProps) {
